@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "subtitler"
+name = "subtitler-generator"
 version = "0.1.0"
 description = "Generate and translate subtitles from audio/video files using Whisper."
 readme = "README.md"
