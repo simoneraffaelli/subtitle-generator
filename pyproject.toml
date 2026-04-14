@@ -38,9 +38,9 @@ dev = [
 subtitler = "subtitler.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/your-username/subtitler"
-Repository = "https://github.com/your-username/subtitler"
-Issues = "https://github.com/your-username/subtitler/issues"
+Homepage = "https://github.com/simoneraffaelli/subtitler"
+Repository = "https://github.com/simoneraffaelli/subtitler"
+Issues = "https://github.com/simoneraffaelli/subtitler/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
