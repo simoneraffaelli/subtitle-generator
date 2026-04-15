@@ -9,7 +9,7 @@ from pathlib import Path
 from asub import __version__
 from asub.progress import Spinner
 from asub.subtitle import SubtitleFormat, infer_output_path, write_subtitle_file
-from asub.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, load_model, transcribe
+from asub.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, Segment, load_model, transcribe
 from asub.translator import translate_segments
 
 
@@ -166,24 +166,19 @@ def main(argv: list[str] | None = None) -> int:
         model = load_model(args.model, device=args.device, compute_type=args.compute_type)
     print(f"Model '{args.model}' loaded.", flush=True)
 
-    spinner = Spinner(f"Transcribing '{input_path.name}'…")
-    spinner.__enter__()
+    with Spinner(f"Transcribing '{input_path.name}'…") as spinner:
 
-    def _on_segment(index: int, seg: object, duration: float) -> None:
-        pct = min(seg.end / duration * 100, 100.0) if duration > 0 else 0
-        spinner.update(
-            f"Transcribing '{input_path.name}' — {index} segments ({pct:.0f}%)"
+        def _on_segment(index: int, seg: Segment, duration: float) -> None:
+            pct = min(seg.end / duration * 100, 100.0) if duration > 0 else 0
+            spinner.update(f"Transcribing '{input_path.name}' — {index} segments ({pct:.0f}%)")
+
+        result = transcribe(
+            model,
+            input_path,
+            language=args.language,
+            vad_filter=not args.no_vad,
+            on_segment=_on_segment,
         )
-
-    result = transcribe(
-        model,
-        input_path,
-        language=args.language,
-        vad_filter=not args.no_vad,
-        on_segment=_on_segment,
-    )
-
-    spinner.__exit__(None, None, None)
 
     segments = result.segments
     print(
@@ -209,9 +204,3 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Saved → {written}", flush=True)
 
     return 0
-
-
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(main())
