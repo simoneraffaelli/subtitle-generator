@@ -3,13 +3,13 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "subtitler-generator"
-version = "0.1.0"
+name = "asub"
+version = "1.0.0"
 description = "Generate and translate subtitles from audio/video files using Whisper."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-authors = [{ name = "subtitler contributors" }]
+authors = [{ name = "asub contributors" }]
 keywords = ["subtitles", "whisper", "transcription", "translation", "srt", "vtt"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -35,12 +35,12 @@ dev = [
 ]
 
 [project.scripts]
-subtitler = "subtitler.cli:main"
+asub = "asub.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/simoneraffaelli/subtitler"
-Repository = "https://github.com/simoneraffaelli/subtitler"
-Issues = "https://github.com/simoneraffaelli/subtitler/issues"
+Homepage = "https://github.com/simoneraffaelli/subtitle-generator"
+Repository = "https://github.com/simoneraffaelli/subtitle-generator"
+Issues = "https://github.com/simoneraffaelli/subtitle-generator/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

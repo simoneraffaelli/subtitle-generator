@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for building a single-file subtitler.exe."""
+"""PyInstaller spec for building a single-file asub.exe."""
 
 import sys
 from pathlib import Path
@@ -7,7 +7,7 @@ from pathlib import Path
 block_cipher = None
 
 a = Analysis(
-    ["src/subtitler/__main__.py"],
+    ["src/asub/__main__.py"],
     pathex=[],
     binaries=[],
     datas=[],
@@ -37,7 +37,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name="subtitler",
+    name="asub",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

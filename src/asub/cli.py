@@ -1,4 +1,4 @@
-"""Command-line interface for subtitler."""
+"""Command-line interface for asub."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ import argparse
 import logging
 from pathlib import Path
 
-from subtitler import __version__
-from subtitler.subtitle import SubtitleFormat, infer_output_path, write_subtitle_file
-from subtitler.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, load_model, transcribe
-from subtitler.translator import translate_segments
+from asub import __version__
+from asub.subtitle import SubtitleFormat, infer_output_path, write_subtitle_file
+from asub.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, load_model, transcribe
+from asub.translator import translate_segments
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="subtitler",
+        prog="asub",
         description="Generate and translate subtitles from audio/video files.",
     )
     parser.add_argument(
@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- List languages and exit ---
     if args.list_languages:
-        from subtitler.translator import supported_languages
+        from asub.translator import supported_languages
 
         langs = supported_languages()
         for name, code in sorted(langs.items()):
@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"Input file not found: {input_path}")
 
     _configure_logging(args.verbose)
-    logger = logging.getLogger("subtitler")
+    logger = logging.getLogger("asub")
 
     # --- Determine output path & format ---
     fmt: SubtitleFormat | None = None

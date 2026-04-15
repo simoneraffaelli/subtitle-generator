@@ -10,7 +10,7 @@ from deep_translator import GoogleTranslator
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from subtitler.transcriber import Segment, TranscriptionResult
+    from asub.transcriber import Segment, TranscriptionResult
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +52,10 @@ def translate_segments(
 
     Returns
     -------
-    A new list of :class:`~subtitler.transcriber.Segment` with translated text.
+    A new list of :class:`~asub.transcriber.Segment` with translated text.
 
     """
-    from subtitler.transcriber import Segment as SegmentCls
+    from asub.transcriber import Segment as SegmentCls
 
     if not segments:
         return []

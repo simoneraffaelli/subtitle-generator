@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from subtitler.transcriber import Segment
+    from asub.transcriber import Segment
 
 logger = logging.getLogger(__name__)
 

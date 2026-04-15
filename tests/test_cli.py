@@ -1,6 +1,6 @@
 """Tests for the CLI argument parser (no model loading required)."""
 
-from subtitler.cli import _build_parser
+from asub.cli import _build_parser
 
 
 class TestParserDefaults:
