@@ -40,6 +40,7 @@ class TranscriptionResult:
 
     language: str
     language_probability: float
+    duration: float
     segments: list[Segment]
 
 
@@ -104,7 +105,7 @@ def transcribe(
     language: str | None = None,
     vad_filter: bool = True,
     word_timestamps: bool = False,
-    on_segment: Callable[[int, Segment], None] | None = None,
+    on_segment: Callable[[int, Segment, float], None] | None = None,
 ) -> TranscriptionResult:
     """Transcribe an audio or video file and return timed segments.
 
@@ -122,7 +123,7 @@ def transcribe(
         Request word-level timestamps (slower, but more precise).
     on_segment:
         Optional callback invoked after each segment is transcribed.
-        Receives ``(segment_index, segment)``.
+        Receives ``(segment_index, segment, audio_duration)``.
 
     """
     audio_path = str(Path(audio_path).resolve())
@@ -148,12 +149,13 @@ def transcribe(
         segments.append(segment)
         logger.debug("[%.2fs → %.2fs] %s", seg.start, seg.end, segment.text)
         if on_segment is not None:
-            on_segment(len(segments), segment)
+            on_segment(len(segments), segment, info.duration)
 
     logger.info("Transcription complete — %d segments.", len(segments))
     return TranscriptionResult(
         language=info.language,
         language_probability=info.language_probability,
+        duration=info.duration,
         segments=segments,
     )
 

@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from asub import __version__
+from asub.progress import Spinner
 from asub.subtitle import SubtitleFormat, infer_output_path, write_subtitle_file
 from asub.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, load_model, transcribe
 from asub.translator import translate_segments
@@ -161,13 +162,18 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- Transcribe ---
     logger.info("Model: %s | Device: %s", args.model, args.device)
-    print(f"Loading model '{args.model}'…", flush=True)
-    model = load_model(args.model, device=args.device, compute_type=args.compute_type)
+    with Spinner(f"Loading model '{args.model}'"):
+        model = load_model(args.model, device=args.device, compute_type=args.compute_type)
+    print(f"Model '{args.model}' loaded.", flush=True)
 
-    print(f"Transcribing '{input_path.name}'…", flush=True)
+    spinner = Spinner(f"Transcribing '{input_path.name}'…")
+    spinner.__enter__()
 
-    def _on_segment(index: int, _seg: object) -> None:
-        print(f"\r  Segments transcribed: {index}", end="", flush=True)
+    def _on_segment(index: int, seg: object, duration: float) -> None:
+        pct = min(seg.end / duration * 100, 100.0) if duration > 0 else 0
+        spinner.update(
+            f"Transcribing '{input_path.name}' — {index} segments ({pct:.0f}%)"
+        )
 
     result = transcribe(
         model,
@@ -177,29 +183,30 @@ def main(argv: list[str] | None = None) -> int:
         on_segment=_on_segment,
     )
 
-    # Finish the progress line
-    print()
+    spinner.__exit__(None, None, None)
 
     segments = result.segments
     print(
         f"Transcribed {len(segments)} segments "
         f"(detected language: {result.language}, "
-        f"confidence: {result.language_probability:.0%})"
+        f"confidence: {result.language_probability:.0%})",
+        flush=True,
     )
 
     # --- Translate (optional) ---
     if args.translate:
-        print(f"Translating to '{args.translate}'…", flush=True)
-        segments = translate_segments(
-            segments,
-            source=result.language,
-            target=args.translate,
-        )
-        print(f"Translated to '{args.translate}'.")
+        with Spinner(f"Translating to '{args.translate}'"):
+            segments = translate_segments(
+                segments,
+                source=result.language,
+                target=args.translate,
+            )
+        print(f"Translated to '{args.translate}'.", flush=True)
 
     # --- Write output ---
-    written = write_subtitle_file(segments, output_path, fmt=fmt)
-    print(f"Saved → {written}")
+    with Spinner("Writing subtitle file"):
+        written = write_subtitle_file(segments, output_path, fmt=fmt)
+    print(f"Saved → {written}", flush=True)
 
     return 0
 
