@@ -1,4 +1,4 @@
-# subtitler
+# asub
 
 Generate and translate subtitles from any audio or video file — powered by
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and
@@ -23,40 +23,40 @@ Generate and translate subtitles from any audio or video file — powered by
 ### From source (recommended for development)
 
 ```bash
-git clone https://github.com/simoneraffaelli/subtitler.git
-cd subtitler
+git clone https://github.com/simoneraffaelli/subtitle-generator.git
+cd subtitle-generator
 pip install -e ".[dev]"
 ```
 
 ### From PyPI (once published)
 
 ```bash
-pip install subtitler
+pip install asub
 ```
 
 ## Quick start
 
 ```bash
 # Transcribe a video and generate subtitles (auto-detect language)
-subtitler video.mp4
+asub video.mp4
 
 # Use a specific model and output format
-subtitler video.mp4 -m large-v3 -f vtt
+asub video.mp4 -m large-v3 -f vtt
 
 # Transcribe and translate to Italian
-subtitler video.mp4 -t it
+asub video.mp4 -t it
 
 # Specify source language, translate to German, verbose output
-subtitler podcast.mp3 -l en -t de -v
+asub podcast.mp3 -l en -t de -v
 
 # Use CPU with int8 quantisation
-subtitler interview.wav --device cpu --compute-type int8
+asub interview.wav --device cpu --compute-type int8
 ```
 
 ## CLI reference
 
 ```
-usage: subtitler [-h] [-o OUTPUT] [-f {srt,vtt}] [-m MODEL] [--device {auto,cpu,cuda}]
+usage: asub [-h] [-o OUTPUT] [-f {srt,vtt}] [-m MODEL] [--device {auto,cpu,cuda}]
                  [--compute-type TYPE] [-l LANG] [--no-vad] [-t LANG] [-v] [--version]
                  [--list-languages]
                  input
@@ -85,9 +85,9 @@ translation:
 ## Python API
 
 ```python
-from subtitler.transcriber import load_model, transcribe
-from subtitler.translator import translate_segments
-from subtitler.subtitle import write_subtitle_file, SubtitleFormat
+from asub.transcriber import load_model, transcribe
+from asub.translator import translate_segments
+from asub.subtitle import write_subtitle_file, SubtitleFormat
 
 # 1. Transcribe
 model = load_model("medium", device="auto")
@@ -104,10 +104,10 @@ write_subtitle_file(translated, "video_it.srt")
 
 ```bash
 pip install ".[dev]"
-pyinstaller subtitler.spec
+pyinstaller asub.spec
 ```
 
-The executable will be in `dist/subtitler.exe`.
+The executable will be in `dist/asub.exe`.
 
 > **Note:** The .exe does not bundle Whisper model weights. Models are downloaded
 > on first run and cached in the default Hugging Face cache directory.
@@ -125,7 +125,7 @@ To silence the warning and get faster downloads:
 
 1. Create a free account at <https://huggingface.co>.
 2. Go to **Settings → Access Tokens** and generate a token.
-3. Set the token before running subtitler:
+3. Set the token before running asub:
 
 ```bash
 # Linux / macOS
@@ -179,13 +179,13 @@ help you pick:
 **Fastest result** — use `tiny` when you just need a rough draft quickly:
 
 ```bash
-subtitler video.mp4 -m tiny
+asub video.mp4 -m tiny
 ```
 
 **Best result** — use `large-v3` (GPU required) for maximum accuracy:
 
 ```bash
-subtitler video.mp4 -m large-v3
+asub video.mp4 -m large-v3
 ```
 
 **Best compromise** — use `turbo` on GPU for near-best accuracy at high speed,
@@ -193,14 +193,14 @@ or `small` on CPU for a good quality-to-speed ratio:
 
 ```bash
 # With a CUDA GPU (recommended)
-subtitler video.mp4 -m turbo
+asub video.mp4 -m turbo
 
 # CPU only
-subtitler video.mp4 -m small
+asub video.mp4 -m small
 ```
 
 > **Tip:** The device and compute type are auto-detected. If you have a CUDA
-> GPU, subtitler will use it with `float16` automatically. On CPU it falls back
+> GPU, asub will use it with `float16` automatically. On CPU it falls back
 > to `int8` quantisation.
 
 ## Upgrading dependencies

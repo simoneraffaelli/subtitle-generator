@@ -1,13 +1,13 @@
 """Tests for subtitle generation (SRT / VTT output)."""
 
-from subtitler.subtitle import (
+from asub.subtitle import (
     SubtitleFormat,
     generate_srt,
     generate_vtt,
     infer_output_path,
     write_subtitle_file,
 )
-from subtitler.transcriber import Segment
+from asub.transcriber import Segment
 
 
 def _sample_segments() -> list[Segment]:

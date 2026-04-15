@@ -1,4 +1,4 @@
-"""Command-line interface for subtitler."""
+"""Command-line interface for asub."""
 
 from __future__ import annotations
 
@@ -6,15 +6,16 @@ import argparse
 import logging
 from pathlib import Path
 
-from subtitler import __version__
-from subtitler.subtitle import SubtitleFormat, infer_output_path, write_subtitle_file
-from subtitler.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, load_model, transcribe
-from subtitler.translator import translate_segments
+from asub import __version__
+from asub.progress import Spinner
+from asub.subtitle import SubtitleFormat, infer_output_path, write_subtitle_file
+from asub.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, Segment, load_model, transcribe
+from asub.translator import translate_segments
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="subtitler",
+        prog="asub",
         description="Generate and translate subtitles from audio/video files.",
     )
     parser.add_argument(
@@ -129,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- List languages and exit ---
     if args.list_languages:
-        from subtitler.translator import supported_languages
+        from asub.translator import supported_languages
 
         langs = supported_languages()
         for name, code in sorted(langs.items()):
@@ -144,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"Input file not found: {input_path}")
 
     _configure_logging(args.verbose)
-    logger = logging.getLogger("subtitler")
+    logger = logging.getLogger("asub")
 
     # --- Determine output path & format ---
     fmt: SubtitleFormat | None = None
@@ -161,50 +162,45 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- Transcribe ---
     logger.info("Model: %s | Device: %s", args.model, args.device)
-    print(f"Loading model '{args.model}'…", flush=True)
-    model = load_model(args.model, device=args.device, compute_type=args.compute_type)
+    with Spinner(f"Loading model '{args.model}'"):
+        model = load_model(args.model, device=args.device, compute_type=args.compute_type)
+    print(f"Model '{args.model}' loaded.", flush=True)
 
-    print(f"Transcribing '{input_path.name}'…", flush=True)
+    with Spinner(f"Transcribing '{input_path.name}'…") as spinner:
 
-    def _on_segment(index: int, _seg: object) -> None:
-        print(f"\r  Segments transcribed: {index}", end="", flush=True)
+        def _on_segment(index: int, seg: Segment, duration: float) -> None:
+            pct = min(seg.end / duration * 100, 100.0) if duration > 0 else 0
+            spinner.update(f"Transcribing '{input_path.name}' — {index} segments ({pct:.0f}%)")
 
-    result = transcribe(
-        model,
-        input_path,
-        language=args.language,
-        vad_filter=not args.no_vad,
-        on_segment=_on_segment,
-    )
-
-    # Finish the progress line
-    print()
+        result = transcribe(
+            model,
+            input_path,
+            language=args.language,
+            vad_filter=not args.no_vad,
+            on_segment=_on_segment,
+        )
 
     segments = result.segments
     print(
         f"Transcribed {len(segments)} segments "
         f"(detected language: {result.language}, "
-        f"confidence: {result.language_probability:.0%})"
+        f"confidence: {result.language_probability:.0%})",
+        flush=True,
     )
 
     # --- Translate (optional) ---
     if args.translate:
-        print(f"Translating to '{args.translate}'…", flush=True)
-        segments = translate_segments(
-            segments,
-            source=result.language,
-            target=args.translate,
-        )
-        print(f"Translated to '{args.translate}'.")
+        with Spinner(f"Translating to '{args.translate}'"):
+            segments = translate_segments(
+                segments,
+                source=result.language,
+                target=args.translate,
+            )
+        print(f"Translated to '{args.translate}'.", flush=True)
 
     # --- Write output ---
-    written = write_subtitle_file(segments, output_path, fmt=fmt)
-    print(f"Saved → {written}")
+    with Spinner("Writing subtitle file"):
+        written = write_subtitle_file(segments, output_path, fmt=fmt)
+    print(f"Saved → {written}", flush=True)
 
     return 0
-
-
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(main())
