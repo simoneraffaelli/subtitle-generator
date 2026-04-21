@@ -31,6 +31,10 @@ Audio/Video file
 Each stage is handled by a dedicated module. The CLI module (`cli.py`)
 orchestrates the pipeline, calling each stage in sequence.
 
+For folder input, `cli.py` wraps that same pipeline in a sequential loop over a
+discovered list of top-level media files. The transcription model is still
+loaded once and reused across the whole batch.
+
 ---
 
 ## Project structure
@@ -220,10 +224,11 @@ A minimal spinner implementation using only `threading` and `sys.stderr`.
 The CLI module is the only place where all other modules come together. It:
 
 1. Parses arguments with `argparse`.
-2. Validates input (file existence, required args).
-3. Configures logging verbosity.
-4. Runs the pipeline: load model → transcribe → translate → write file.
-5. Wraps each long-running step in a `Spinner` for user feedback.
+2. Validates input (file path or folder path, required args).
+3. Discovers batch inputs and plans output paths when the input is a folder.
+4. Configures logging verbosity.
+5. Runs the pipeline: load model → transcribe → translate → write file.
+6. Wraps each long-running step in a `Spinner` for user feedback.
 
 **`nargs="?"` for the input argument:**
 
@@ -246,6 +251,28 @@ if input_path is None:
 
 This uses `logging.basicConfig()` which only takes effect on the first call,
 so third-party libraries that configure their own loggers aren't affected.
+
+### Batch directory mode
+
+Folder input is intentionally conservative:
+
+- Only **top-level** files are considered. Recursive traversal is out of scope.
+- Discovery uses a documented allowlist of common audio/video extensions rather
+  than attempting every file in the folder.
+- Output naming stays deterministic. Without `--output`, each subtitle file is
+  written next to its source media file. With `--output`, the value is treated
+  as an output directory.
+- Before any work starts, the CLI checks whether multiple inputs would map to
+  the same subtitle path. This avoids silent overwrites from files like
+  `clip.mp3` and `clip.wav`.
+- Processing stays **sequential**. This keeps memory use predictable and avoids
+  loading multiple Whisper inference jobs into CPU or GPU memory at once.
+
+Mixed-language folders are supported. If the user does not provide
+`-l/--language`, `transcribe()` auto-detects the language for each file and
+that per-file result becomes the translation source. If the detected source
+already matches the requested translation target, the CLI skips translation for
+that file to avoid a redundant network request.
 
 ---
 
@@ -288,24 +315,29 @@ The `Segment` dataclass is frozen (immutable), so the translator creates new
 have access to the untranslated result after translation if needed (relevant
 for the Python API).
 
+In batch mode, the same flow is repeated for each discovered file, but always
+with the same already-loaded Whisper model instance.
+
 ---
 
 ## Error handling philosophy
 
-asub follows a **fail-fast, validate-at-boundaries** approach:
+asub follows a **validate-at-boundaries** approach with two runtime modes:
 
-- **CLI layer** validates user input (file exists, required arguments). Errors
-  here use `parser.error()` which prints a clean message and exits with code 2.
+- **CLI pre-flight validation** checks user input (file/folder exists, required
+  arguments, directory output semantics, duplicate derived output paths).
+  Errors here use `parser.error()` which prints a clean message and exits with
+  code 2 before any expensive work starts.
 - **Library layer** uses descriptive `ValueError` exceptions for invalid
   parameters (e.g. unsupported device string). No silent defaults for obviously
   wrong input.
-- **External failures** (model download, network errors in translation) are
-  allowed to propagate naturally. The stack trace from `-vv` gives enough
-  context for debugging.
-
-There is no try/except wrapping around the main pipeline. If something fails,
-the user sees the real error. This is intentional — swallowing exceptions makes
-debugging harder.
+- **Single-file mode** remains fail-fast. External failures (model download,
+  decoding issues, translation/network problems) propagate naturally so the
+  user sees the real error.
+- **Batch mode** isolates failures per file. One bad input should not waste a
+  long batch run, so `cli.py` catches exceptions around each file, reports the
+  failure, continues with the rest, then returns exit code `1` if any file
+  failed.
 
 ---
 
@@ -315,6 +347,9 @@ Tests are in `tests/` and split by module:
 
 - **`test_cli.py`** — tests the argument parser only. No model loading, no I/O.
   Verifies defaults, flag combinations, and verbosity levels.
+- **`test_cli_batch.py`** — tests folder discovery, output planning, mixed-
+  language translation routing, collision detection, and per-file failure
+  handling with mocked transcription and translation.
 - **`test_subtitle.py`** — tests SRT/VTT generation, timestamp formatting,
   output path inference, and file writing (using `tmp_path`).
 
