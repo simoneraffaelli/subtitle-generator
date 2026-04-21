@@ -97,7 +97,7 @@ positional arguments:
   input                 Path to an audio/video file, or a folder containing media files.
 
 options:
-  -o, --output          Output subtitle file path for a single input file, or an output directory when the input is a folder
+  -o, --output          Output subtitle file path for a single input file, or an output directory when the input is a folder.
   -f, --format          Subtitle format: srt, vtt
   -v, --verbose         Increase verbosity (-v INFO, -vv DEBUG)
   --version             Show version and exit
