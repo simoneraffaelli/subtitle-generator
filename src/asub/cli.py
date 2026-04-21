@@ -388,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
                 total=total_files,
             )
             succeeded.append((current_input, written))
-        except Exception as exc:  # pragma: no cover - exercised via tests with mocked failures.
+        except Exception as exc:
             failed.append((current_input, exc))
             logger.debug("Detailed failure while processing '%s'.", current_input, exc_info=exc)
             print(
