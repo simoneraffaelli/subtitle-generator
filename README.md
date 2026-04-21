@@ -1,6 +1,6 @@
 # asub
 
-Generate and translate subtitles from any audio or video file — powered by
+Generate and translate subtitles from audio or video files — one by one or in folders — powered by
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and
 [deep-translator](https://github.com/nidhaloff/deep-translator).
 
@@ -9,6 +9,8 @@ Generate and translate subtitles from any audio or video file — powered by
 - **Fast transcription** — up to 4× faster than OpenAI Whisper with the same
   accuracy, using CTranslate2.
 - **Automatic language detection** — or specify the source language manually.
+- **Folder batch processing** — process every supported media file in a folder
+  while loading the Whisper model only once.
 - **Translation** — translate subtitles to 100+ languages via Google Translate
   (free, no API key).
 - **Multiple output formats** — SRT and WebVTT.
@@ -40,11 +42,17 @@ pip install asub
 # Transcribe a video and generate subtitles (auto-detect language)
 asub video.mp4
 
+# Process every supported media file in a folder
+asub recordings/
+
 # Use a specific model and output format
 asub video.mp4 -m large-v3 -f vtt
 
 # Transcribe and translate to Italian
 asub video.mp4 -t it
+
+# Batch-process a folder and write all subtitles into one output directory
+asub recordings/ -o subtitles/ -t de
 
 # Specify source language, translate to German, verbose output
 asub podcast.mp3 -l en -t de -v
@@ -52,6 +60,30 @@ asub podcast.mp3 -l en -t de -v
 # Use CPU with int8 quantisation
 asub interview.wav --device cpu --compute-type int8
 ```
+
+## Folder input
+
+When `input` points to a folder, asub switches to **batch mode**.
+
+- Only the **top level** of the folder is scanned. Nested subfolders are not
+  processed.
+- Supported input extensions in batch mode are:
+  `.aac`, `.aiff`, `.avi`, `.flac`, `.m4a`, `.m4v`, `.mkv`, `.mov`, `.mp3`,
+  `.mp4`, `.mpeg`, `.mpg`, `.oga`, `.ogg`, `.opus`, `.wav`, `.webm`, `.wma`.
+- Without `-o/--output`, subtitle files are written next to each media file.
+- With `-o/--output`, the value is treated as an **output directory**, not a
+  single subtitle file path.
+- The Whisper model is loaded once and reused across the whole batch.
+- If `-l/--language` is omitted, language detection happens **per file**.
+  Mixed-language folders are supported, and translation uses each file's
+  detected source language.
+- If a file's detected language already matches `-t/--translate`, translation
+  is skipped for that file.
+- If one file fails, asub continues with the rest, then prints a summary. The
+  process exits with code `1` if any file failed.
+- If multiple input files would produce the same subtitle path (for example
+  `clip.mp3` and `clip.wav`), asub stops before processing and asks you to
+  resolve the naming collision.
 
 ## CLI reference
 
@@ -62,10 +94,10 @@ usage: asub [-h] [-o OUTPUT] [-f {srt,vtt}] [-m MODEL] [--device {auto,cpu,cuda}
                  input
 
 positional arguments:
-  input                 Path to an audio or video file.
+  input                 Path to an audio/video file, or a folder containing media files.
 
 options:
-  -o, --output          Output subtitle file path (default: <input>.srt)
+  -o, --output          Output subtitle file path for a single input file, or an output directory when the input is a folder.
   -f, --format          Subtitle format: srt, vtt
   -v, --verbose         Increase verbosity (-v INFO, -vv DEBUG)
   --version             Show version and exit
@@ -202,6 +234,17 @@ asub video.mp4 -m small
 > **Tip:** The device and compute type are auto-detected. If you have a CUDA
 > GPU, asub will use it with `float16` automatically. On CPU it falls back
 > to `int8` quantisation.
+
+## Batch-mode notes
+
+- Batch mode is **sequential** by design. This keeps GPU/CPU memory use stable
+  and makes per-file progress easier to understand.
+- In mixed-language folders, auto-detection may produce different source
+  languages across files. If you need consistent source-language handling, pass
+  `-l/--language` explicitly.
+- Translation uses Google Translate through `deep-translator`, so large batches
+  can still hit network or rate-limit issues. Failures are reported per file in
+  the final summary.
 
 ## Upgrading dependencies
 
