@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asub"
-version = "1.0.0"
+version = "1.0.1"
 description = "Generate and translate subtitles from audio/video files using Whisper."
 readme = "README.md"
 license = "MIT"
