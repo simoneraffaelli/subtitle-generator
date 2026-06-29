@@ -4,13 +4,15 @@
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 block_cipher = None
 
 a = Analysis(
     ["src/asub/__main__.py"],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=collect_data_files("faster_whisper"),
     hiddenimports=[
         "faster_whisper",
         "ctranslate2",

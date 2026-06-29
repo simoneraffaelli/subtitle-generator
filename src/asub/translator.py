@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from deep_translator import GoogleTranslator
+from deep_translator.exceptions import RequestError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -16,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 # Maximum characters Google Translate accepts per request.
 _GOOGLE_CHAR_LIMIT = 5000
+_TRANSLATION_RETRY_ATTEMPTS = 3
+_TRANSLATION_RETRY_DELAY_SECONDS = 1.0
 
 
 def supported_languages() -> dict[str, str]:
@@ -28,6 +32,55 @@ def translate_text(text: str, *, source: str = "auto", target: str = "en") -> st
     if not text.strip():
         return text
     return GoogleTranslator(source=source, target=target).translate(text)
+
+
+def _translate_with_retry(translator: GoogleTranslator, text: str) -> str:
+    last_error: RequestError | None = None
+    for attempt in range(_TRANSLATION_RETRY_ATTEMPTS):
+        try:
+            return translator.translate(text)
+        except RequestError as exc:
+            last_error = exc
+            if attempt + 1 < _TRANSLATION_RETRY_ATTEMPTS:
+                time.sleep(_TRANSLATION_RETRY_DELAY_SECONDS * (attempt + 1))
+
+    assert last_error is not None
+    raise last_error
+
+
+def _translate_batch_texts(
+    translator: GoogleTranslator,
+    texts: list[str],
+    *,
+    separator: str,
+) -> list[str]:
+    combined = separator.join(texts)
+    try:
+        result = _translate_with_retry(translator, combined)
+    except RequestError:
+        if len(texts) == 1:
+            raise
+
+        midpoint = len(texts) // 2
+        logger.debug("Batch translation failed; retrying as smaller batches.")
+        return [
+            *_translate_batch_texts(translator, texts[:midpoint], separator=separator),
+            *_translate_batch_texts(translator, texts[midpoint:], separator=separator),
+        ]
+
+    parts = result.split(separator)
+    if len(parts) != len(texts):
+        if len(texts) == 1:
+            return [result.strip()]
+
+        midpoint = len(texts) // 2
+        logger.debug("Batch split mismatch; retrying as smaller batches.")
+        return [
+            *_translate_batch_texts(translator, texts[:midpoint], separator=separator),
+            *_translate_batch_texts(translator, texts[midpoint:], separator=separator),
+        ]
+
+    return [part.strip() for part in parts]
 
 
 def translate_segments(
@@ -85,18 +138,10 @@ def translate_segments(
     translated_texts: list[str] = [""] * len(segments)
 
     for batch_indices in batches:
-        combined = separator.join(segments[i].text for i in batch_indices)
-        result = translator.translate(combined)
-        parts = result.split("\n")
-
-        # If the translator merges/splits lines, fall back to per-segment translation.
-        if len(parts) != len(batch_indices):
-            logger.debug("Batch split mismatch — falling back to per-segment translation.")
-            for i in batch_indices:
-                translated_texts[i] = translator.translate(segments[i].text)
-        else:
-            for i, part in zip(batch_indices, parts, strict=True):
-                translated_texts[i] = part.strip()
+        batch_texts = [segments[i].text for i in batch_indices]
+        parts = _translate_batch_texts(translator, batch_texts, separator=separator)
+        for i, part in zip(batch_indices, parts, strict=True):
+            translated_texts[i] = part
 
     result_segments = [
         SegmentCls(start=seg.start, end=seg.end, text=translated_texts[i])
