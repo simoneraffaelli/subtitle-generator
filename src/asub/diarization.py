@@ -21,6 +21,51 @@ from asub.transcriber import (
 logger = logging.getLogger(__name__)
 
 _WHISPERX_AUDIO_SAMPLE_RATE = 16000
+_DEFAULT_ALIGNMENT_LANGUAGES = frozenset(
+    {
+        "ar",
+        "ca",
+        "cs",
+        "da",
+        "de",
+        "el",
+        "en",
+        "es",
+        "eu",
+        "fa",
+        "fi",
+        "fr",
+        "gl",
+        "he",
+        "hi",
+        "hr",
+        "hu",
+        "id",
+        "it",
+        "ja",
+        "ka",
+        "ko",
+        "lv",
+        "ml",
+        "nl",
+        "nn",
+        "no",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "sv",
+        "te",
+        "tl",
+        "tr",
+        "uk",
+        "ur",
+        "vi",
+        "zh",
+    }
+)
 
 
 class DiarizationUnavailableError(RuntimeError):
@@ -118,6 +163,14 @@ class WhisperXDiarizer:
         audio: Any,
         language: str,
     ) -> dict[str, Any]:
+        if not _has_default_alignment_model(language):
+            logger.warning(
+                "No default WhisperX alignment model is available for language '%s'; "
+                "using segment-level speaker assignment.",
+                language,
+            )
+            return result
+
         try:
             align_model, align_metadata = self._load_align_model(language)
         except ValueError as exc:
@@ -237,6 +290,13 @@ def _duration_seconds(audio: Any) -> float:
 def _is_missing_default_alignment_model(exc: ValueError) -> bool:
     message = str(exc).casefold()
     return "no default align-model" in message or "no default alignment model" in message
+
+
+def _has_default_alignment_model(language: str) -> bool:
+    normalized = language.strip().casefold()
+    if "-" in normalized:
+        normalized = normalized.split("-", 1)[0]
+    return normalized in _DEFAULT_ALIGNMENT_LANGUAGES
 
 
 def _segments_from_whisperx_result(result: Mapping[str, Any]) -> list[Segment]:

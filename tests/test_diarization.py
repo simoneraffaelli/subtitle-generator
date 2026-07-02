@@ -116,7 +116,7 @@ def test_diarizer_falls_back_to_segment_speakers_without_align_model(tmp_path, c
         def load_align_model(self, *, language_code: str, device: str):
             del device
             self.loaded_align_languages.append(language_code)
-            raise ValueError(f"No default align-model for language: {language_code}")
+            raise AssertionError("unsupported languages should skip alignment loading")
 
         def align(self, *args, **kwargs):
             del args, kwargs
@@ -153,12 +153,17 @@ def test_diarizer_falls_back_to_segment_speakers_without_align_model(tmp_path, c
     with caplog.at_level(logging.WARNING, logger="asub.diarization"):
         result = diarizer.transcribe(input_file)
 
-    assert fake_whisperx.loaded_align_languages == ["th"]
+    assert fake_whisperx.loaded_align_languages == []
     assert result.language == "th"
     assert result.segments == [
         Segment(start=0.0, end=2.0, text="sawasdee", speaker="SPEAKER_00")
     ]
     assert "segment-level speaker assignment" in caplog.text
+
+
+def test_alignment_language_support_uses_base_language_code() -> None:
+    assert diarization._has_default_alignment_model("pt-BR") is True
+    assert diarization._has_default_alignment_model("th") is False
 
 
 def test_segment_conversion_falls_back_when_word_speakers_are_incomplete() -> None:
