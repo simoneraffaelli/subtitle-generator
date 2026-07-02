@@ -39,3 +39,41 @@ def test_translate_segments_splits_failed_batches(monkeypatch) -> None:
         "three translated",
     ]
     assert any("\n" in call for call in calls)
+
+
+def test_translate_segments_normalizes_google_language_aliases(monkeypatch) -> None:
+    initializers: list[tuple[str, str]] = []
+
+    class FakeGoogleTranslator:
+        def __init__(self, *, source: str, target: str) -> None:
+            initializers.append((source, target))
+
+        def translate(self, text: str) -> str:
+            return f"{text} translated"
+
+    monkeypatch.setattr(translator, "GoogleTranslator", FakeGoogleTranslator)
+
+    segments = [Segment(start=0.0, end=1.0, text="hello")]
+
+    translated = translator.translate_segments(segments, source="zh", target="he")
+
+    assert initializers == [("zh-CN", "iw")]
+    assert [seg.text for seg in translated] == ["hello translated"]
+
+
+def test_translate_text_normalizes_chinese_target_casing(monkeypatch) -> None:
+    initializers: list[tuple[str, str]] = []
+
+    class FakeGoogleTranslator:
+        def __init__(self, *, source: str, target: str) -> None:
+            initializers.append((source, target))
+
+        def translate(self, text: str) -> str:
+            return f"{text} translated"
+
+    monkeypatch.setattr(translator, "GoogleTranslator", FakeGoogleTranslator)
+
+    translated = translator.translate_text("hello", source="auto", target="zh-tw")
+
+    assert initializers == [("auto", "zh-TW")]
+    assert translated == "hello translated"

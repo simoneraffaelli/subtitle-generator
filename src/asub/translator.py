@@ -20,6 +20,27 @@ logger = logging.getLogger(__name__)
 _GOOGLE_CHAR_LIMIT = 5000
 _TRANSLATION_RETRY_ATTEMPTS = 3
 _TRANSLATION_RETRY_DELAY_SECONDS = 1.0
+_GOOGLE_TRANSLATE_LANGUAGE_ALIASES = {
+    # faster-whisper reports Chinese as "zh"; GoogleTranslator requires a
+    # regional variant. Default to Simplified Chinese unless the caller is more
+    # specific.
+    "zh": "zh-CN",
+    "zh-cn": "zh-CN",
+    "zh-hans": "zh-CN",
+    "zh-sg": "zh-CN",
+    "zh-my": "zh-CN",
+    "zh-tw": "zh-TW",
+    "zh-hant": "zh-TW",
+    "zh-hk": "zh-TW",
+    "zh-mo": "zh-TW",
+    # Google Translate still exposes Hebrew with its legacy code here.
+    "he": "iw",
+}
+
+
+def _normalize_google_language(language: str) -> str:
+    language = language.strip()
+    return _GOOGLE_TRANSLATE_LANGUAGE_ALIASES.get(language.casefold(), language)
 
 
 def supported_languages() -> dict[str, str]:
@@ -31,6 +52,8 @@ def translate_text(text: str, *, source: str = "auto", target: str = "en") -> st
     """Translate a single string."""
     if not text.strip():
         return text
+    source = _normalize_google_language(source)
+    target = _normalize_google_language(target)
     return GoogleTranslator(source=source, target=target).translate(text)
 
 
@@ -113,6 +136,8 @@ def translate_segments(
     if not segments:
         return []
 
+    source = _normalize_google_language(source)
+    target = _normalize_google_language(target)
     logger.info("Translating %d segments → %s…", len(segments), target)
     translator = GoogleTranslator(source=source, target=target)
 
