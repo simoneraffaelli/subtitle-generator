@@ -13,6 +13,8 @@ Generate and translate subtitles from audio or video files — one by one or in 
   while loading the Whisper model only once.
 - **Translation** — translate subtitles to 100+ languages via Google Translate
   (free, no API key).
+- **Speaker diarization** — optional WhisperX-powered speaker labels such as
+  `[SPEAKER_00]`.
 - **Multiple output formats** — SRT and WebVTT.
 - **VAD filtering** — Silero VAD removes silence and reduces hallucination.
 - **Model choice** — from `tiny` (fast, less accurate) to `large-v3`
@@ -30,10 +32,22 @@ cd subtitle-generator
 pip install -e ".[dev]"
 ```
 
+To enable speaker diarization during development:
+
+```bash
+pip install -e ".[dev,diarization]"
+```
+
 ### From PyPI (once published)
 
 ```bash
 pip install asub
+```
+
+For speaker diarization:
+
+```bash
+pip install "asub[diarization]"
 ```
 
 ## Quick start
@@ -50,6 +64,12 @@ asub video.mp4 -m large-v3 -f vtt
 
 # Transcribe and translate to Italian
 asub video.mp4 -t it
+
+# Transcribe with anonymous speaker labels
+asub interview.wav --diarize --hf-token hf_your_token_here
+
+# Improve speaker counting when you know there are exactly two speakers
+asub interview.wav --diarize --hf-token hf_your_token_here --speakers 2
 
 # Batch-process a folder and write all subtitles into one output directory
 asub recordings/ -o subtitles/ -t de
@@ -89,8 +109,10 @@ When `input` points to a folder, asub switches to **batch mode**.
 
 ```
 usage: asub [-h] [-o OUTPUT] [-f {srt,vtt}] [-m MODEL] [--device {auto,cpu,cuda}]
-                 [--compute-type TYPE] [-l LANG] [--no-vad] [-t LANG] [-v] [--version]
-                 [--list-languages]
+                 [--compute-type TYPE] [-l LANG] [--no-vad] [--diarize]
+                 [--hf-token HF_TOKEN] [--speakers N] [--min-speakers N]
+                 [--max-speakers N] [--diarization-batch-size N] [-t LANG]
+                 [-v] [--version] [--list-languages]
                  input
 
 positional arguments:
@@ -110,9 +132,36 @@ transcription:
   -l, --language        Source language code (auto-detected if omitted)
   --no-vad              Disable Voice Activity Detection
 
+speaker diarization:
+  --diarize             Detect anonymous speaker labels and prefix subtitle text.
+  --hf-token TOKEN      Hugging Face token for pyannote models (or set HF_TOKEN).
+  --speakers N          Known exact number of speakers.
+  --min-speakers N      Minimum expected number of speakers.
+  --max-speakers N      Maximum expected number of speakers.
+  --diarization-batch-size N
+                        WhisperX batch size for diarized transcription.
+
 translation:
   -t, --translate LANG  Translate subtitles to this language code
 ```
+
+## Speaker diarization
+
+Diarization is optional because it adds heavier ML dependencies. Install the
+extra, accept the pyannote speaker-diarization model terms on Hugging Face, and
+pass `--diarize`.
+
+Speaker labels are anonymous IDs, not real names. Output cues are prefixed in
+plain text for broad player compatibility:
+
+```text
+[SPEAKER_00] Hello, thanks for joining.
+[SPEAKER_01] Happy to be here.
+```
+
+If you know the speaker count, pass `--speakers N`. If you only know a range,
+use `--min-speakers N` and/or `--max-speakers N`. Diarization is not perfect,
+and overlapping speech is especially difficult.
 
 ## Python API
 
@@ -169,6 +218,10 @@ $env:HF_TOKEN = "hf_your_token_here"
 
 To make this permanent, add the variable to your shell profile or set it via
 **System → Environment Variables** on Windows.
+
+For `--diarize`, a token is required unless `HF_TOKEN` is already set, and you
+must accept the pyannote speaker-diarization model terms in your Hugging Face
+account.
 
 ## Available models
 
@@ -250,6 +303,12 @@ asub video.mp4 -m small
 
 ```bash
 pip install --upgrade faster-whisper deep-translator
+```
+
+With diarization enabled:
+
+```bash
+pip install --upgrade "asub[diarization]"
 ```
 
 ## Contributing

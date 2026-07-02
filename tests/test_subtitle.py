@@ -47,6 +47,11 @@ class TestSRTContent:
         srt = generate_srt([])
         assert srt == ""
 
+    def test_speaker_prefixes(self) -> None:
+        srt = generate_srt([Segment(start=0.0, end=1.0, text="Hello", speaker="SPEAKER_00")])
+
+        assert "[SPEAKER_00] Hello" in srt
+
 
 class TestVTTContent:
     def test_header_present(self) -> None:
@@ -56,6 +61,11 @@ class TestVTTContent:
     def test_empty_segments(self) -> None:
         vtt = generate_vtt([])
         assert vtt.startswith("WEBVTT")
+
+    def test_speaker_prefixes(self) -> None:
+        vtt = generate_vtt([Segment(start=0.0, end=1.0, text="Hello", speaker="SPEAKER_00")])
+
+        assert "[SPEAKER_00] Hello" in vtt
 
 
 class TestInferOutputPath:

@@ -44,6 +44,7 @@ src/asub/
 ├── __init__.py       # Package metadata (version string)
 ├── __main__.py       # Entry point for `python -m asub`
 ├── cli.py            # Argument parsing, orchestration, user output
+├── diarization.py    # Optional WhisperX speaker diarization
 ├── transcriber.py    # Whisper model loading and transcription
 ├── subtitle.py       # SRT/VTT generation and file writing
 ├── translator.py     # Segment translation via Google Translate
@@ -57,6 +58,7 @@ Each module has **one responsibility**:
 | Module           | Responsibility                              | External dependency       |
 | ---------------- | ------------------------------------------- | ------------------------- |
 | `transcriber.py` | Load a Whisper model and transcribe audio    | `faster-whisper`          |
+| `diarization.py` | Optional diarized transcription              | `whisperx` extra          |
 | `translator.py`  | Translate text segments                      | `deep-translator`         |
 | `subtitle.py`    | Format segments into SRT/VTT and write files | (none — pure Python)      |
 | `progress.py`    | Show animated spinners in the terminal       | (none — pure Python)      |
@@ -91,6 +93,7 @@ class Segment:
     start: float    # seconds
     end: float      # seconds
     text: str
+    speaker: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class TranscriptionResult:
@@ -104,6 +107,11 @@ Both dataclasses use `frozen=True` (immutable) and `slots=True` (lower memory,
 faster attribute access). `Segment` is the universal data type that flows
 through the entire pipeline — transcriber produces them, translator transforms
 their text, subtitle writer consumes them.
+
+When `--diarize` is enabled, `diarization.py` uses the optional WhisperX stack
+to transcribe, align words, run pyannote speaker diarization, and return the
+same `TranscriptionResult` shape with `Segment.speaker` populated. The normal
+`faster-whisper` path remains unchanged when `--diarize` is not used.
 
 **Device and compute type auto-detection:**
 
@@ -318,6 +326,9 @@ for the Python API).
 In batch mode, the same flow is repeated for each discovered file, but always
 with the same already-loaded Whisper model instance.
 
+With diarization enabled, the CLI loads one reusable WhisperX diarizer for the
+whole run and reuses it across the same sequential batch loop.
+
 ---
 
 ## Error handling philosophy
@@ -350,12 +361,16 @@ Tests are in `tests/` and split by module:
 - **`test_cli_batch.py`** — tests folder discovery, output planning, mixed-
   language translation routing, collision detection, and per-file failure
   handling with mocked transcription and translation.
+- **`test_diarization.py`** — tests the optional WhisperX wrapper with fakes, so
+  no model download or Hugging Face access is needed.
 - **`test_subtitle.py`** — tests SRT/VTT generation, timestamp formatting,
   output path inference, and file writing (using `tmp_path`).
+- **`test_translator.py`** — tests translation batching and speaker metadata
+  preservation.
 
-Tests avoid importing `faster-whisper` or hitting the network. They exercise
-the pure-logic parts of the codebase. The `Segment` dataclass is simple enough
-to construct directly in test fixtures.
+Tests avoid real model downloads or network calls. They exercise the pure-logic
+parts of the codebase. The `Segment` dataclass is simple enough to construct
+directly in test fixtures.
 
 ---
 
@@ -364,6 +379,7 @@ to construct directly in test fixtures.
 | Dependency         | Why                                                                 |
 | ------------------ | ------------------------------------------------------------------- |
 | `faster-whisper`   | CTranslate2 backend — 4× faster than OpenAI Whisper, lower VRAM    |
+| `whisperx`         | Optional diarization, word alignment, and speaker assignment        |
 | `deep-translator`  | Free Google Translate — no API key, 100+ languages, zero setup      |
 | `ruff`             | Linter + formatter in one tool, extremely fast (written in Rust)    |
 | `pytest`           | Standard Python test runner, minimal boilerplate                    |

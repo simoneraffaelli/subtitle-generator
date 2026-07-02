@@ -61,6 +61,26 @@ def test_translate_segments_normalizes_google_language_aliases(monkeypatch) -> N
     assert [seg.text for seg in translated] == ["hello translated"]
 
 
+def test_translate_segments_preserves_speaker_labels(monkeypatch) -> None:
+    class FakeGoogleTranslator:
+        def __init__(self, *, source: str, target: str) -> None:
+            assert source == "en"
+            assert target == "it"
+
+        def translate(self, text: str) -> str:
+            return f"{text} translated"
+
+    monkeypatch.setattr(translator, "GoogleTranslator", FakeGoogleTranslator)
+
+    segments = [Segment(start=0.0, end=1.0, text="hello", speaker="SPEAKER_00")]
+
+    translated = translator.translate_segments(segments, source="en", target="it")
+
+    assert translated == [
+        Segment(start=0.0, end=1.0, text="hello translated", speaker="SPEAKER_00")
+    ]
+
+
 def test_translate_text_normalizes_chinese_target_casing(monkeypatch) -> None:
     initializers: list[tuple[str, str]] = []
 

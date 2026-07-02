@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from asub import __version__
+from asub.diarization import (
+    DiarizationUnavailableError,
+    load_diarizer,
+    transcribe_with_diarization,
+)
 from asub.progress import Spinner
 from asub.subtitle import SubtitleFormat, infer_output_path, write_subtitle_file
 from asub.transcriber import AVAILABLE_MODELS, DEFAULT_MODEL, Segment, load_model, transcribe
@@ -16,6 +22,8 @@ from asub.translator import translate_segments
 
 if TYPE_CHECKING:
     from faster_whisper import WhisperModel
+
+    from asub.diarization import WhisperXDiarizer
 
 SUPPORTED_MEDIA_EXTENSIONS: frozenset[str] = frozenset(
     {
@@ -39,6 +47,18 @@ SUPPORTED_MEDIA_EXTENSIONS: frozenset[str] = frozenset(
         ".wma",
     }
 )
+
+
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError:
+        msg = f"Expected a positive integer, got {value!r}."
+        raise argparse.ArgumentTypeError(msg) from None
+    if parsed < 1:
+        msg = f"Expected a positive integer, got {value!r}."
+        raise argparse.ArgumentTypeError(msg)
+    return parsed
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -103,6 +123,43 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable Voice Activity Detection filter.",
     )
 
+    # --- Speaker diarization options ---
+    diarization = parser.add_argument_group("speaker diarization")
+    diarization.add_argument(
+        "--diarize",
+        action="store_true",
+        help="Detect anonymous speaker labels and prefix subtitle text with them.",
+    )
+    diarization.add_argument(
+        "--hf-token",
+        default=None,
+        help="Hugging Face token for pyannote diarization models. Defaults to HF_TOKEN.",
+    )
+    diarization.add_argument(
+        "--speakers",
+        type=_positive_int,
+        default=None,
+        help="Known exact number of speakers.",
+    )
+    diarization.add_argument(
+        "--min-speakers",
+        type=_positive_int,
+        default=None,
+        help="Minimum expected number of speakers.",
+    )
+    diarization.add_argument(
+        "--max-speakers",
+        type=_positive_int,
+        default=None,
+        help="Maximum expected number of speakers.",
+    )
+    diarization.add_argument(
+        "--diarization-batch-size",
+        type=_positive_int,
+        default=16,
+        help="WhisperX batch size for diarized transcription (default: 16).",
+    )
+
     # --- Translation options ---
     translation = parser.add_argument_group("translation")
     translation.add_argument(
@@ -146,6 +203,36 @@ def _configure_logging(verbosity: int) -> None:
         format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt="%H:%M:%S",
     )
+
+
+def _validate_diarization_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    speaker_hints = (args.speakers, args.min_speakers, args.max_speakers)
+    if any(value is not None for value in speaker_hints) and not args.diarize:
+        parser.error("--speakers, --min-speakers, and --max-speakers require --diarize.")
+
+    if args.hf_token is not None and not args.diarize:
+        parser.error("--hf-token requires --diarize.")
+
+    if args.speakers is not None and (
+        args.min_speakers is not None or args.max_speakers is not None
+    ):
+        parser.error("--speakers cannot be combined with --min-speakers or --max-speakers.")
+
+    if (
+        args.min_speakers is not None
+        and args.max_speakers is not None
+        and args.min_speakers > args.max_speakers
+    ):
+        parser.error("--min-speakers cannot be greater than --max-speakers.")
+
+    if args.diarization_batch_size != 16 and not args.diarize:
+        parser.error("--diarization-batch-size requires --diarize.")
+
+    if args.diarize and not (args.hf_token or os.environ.get("HF_TOKEN")):
+        parser.error(
+            "Speaker diarization requires a Hugging Face token. Pass --hf-token or set HF_TOKEN "
+            "after accepting the pyannote speaker-diarization model terms."
+        )
 
 
 def _is_supported_media_file(path: Path) -> bool:
@@ -251,28 +338,45 @@ def _process_input_file(
     *,
     output_path: Path,
     fmt: SubtitleFormat | None,
-    model: WhisperModel,
+    model: WhisperModel | WhisperXDiarizer,
     language: str | None,
     translate_to: str | None,
     vad_filter: bool,
+    diarize: bool,
+    speakers: int | None,
+    min_speakers: int | None,
+    max_speakers: int | None,
     index: int,
     total: int,
 ) -> Path:
     label = _format_file_label(input_path, index, total)
+    action = "transcribing and diarizing" if diarize else "transcribing"
 
-    with Spinner(f"{label} — transcribing") as spinner:
+    with Spinner(f"{label} — {action}") as spinner:
 
         def _on_segment(segment_index: int, seg: Segment, duration: float) -> None:
             pct = min(seg.end / duration * 100, 100.0) if duration > 0 else 0
-            spinner.update(f"{label} — transcribing {segment_index} segments ({pct:.0f}%)")
+            spinner.update(f"{label} — {action} {segment_index} segments ({pct:.0f}%)")
 
-        result = transcribe(
-            model,
-            input_path,
-            language=language,
-            vad_filter=vad_filter,
-            on_segment=_on_segment,
-        )
+        if diarize:
+            result = transcribe_with_diarization(
+                model,
+                input_path,
+                language=language,
+                vad_filter=vad_filter,
+                speakers=speakers,
+                min_speakers=min_speakers,
+                max_speakers=max_speakers,
+                on_segment=_on_segment,
+            )
+        else:
+            result = transcribe(
+                model,
+                input_path,
+                language=language,
+                vad_filter=vad_filter,
+                on_segment=_on_segment,
+            )
 
     segments = result.segments
     print(
@@ -326,6 +430,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {code:6s}  {name}")
         return 0
 
+    _validate_diarization_args(parser, args)
+
     # --- Validate input ---
     input_path: Path | None = args.input
     input_files, input_is_directory = _resolve_inputs(parser, input_path)
@@ -349,9 +455,23 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- Transcribe ---
     logger.info("Model: %s | Device: %s", args.model, args.device)
-    with Spinner(f"Loading model '{args.model}'"):
-        model = load_model(args.model, device=args.device, compute_type=args.compute_type)
-    print(f"Model '{args.model}' loaded.", flush=True)
+    if args.diarize:
+        try:
+            with Spinner(f"Loading diarization model '{args.model}'"):
+                model = load_diarizer(
+                    args.model,
+                    device=args.device,
+                    compute_type=args.compute_type,
+                    hf_token=args.hf_token,
+                    batch_size=args.diarization_batch_size,
+                )
+        except (DiarizationUnavailableError, ValueError) as exc:
+            parser.error(str(exc))
+        print(f"Diarization model '{args.model}' loaded.", flush=True)
+    else:
+        with Spinner(f"Loading model '{args.model}'"):
+            model = load_model(args.model, device=args.device, compute_type=args.compute_type)
+        print(f"Model '{args.model}' loaded.", flush=True)
 
     total_files = len(input_files)
     if input_is_directory:
@@ -366,6 +486,10 @@ def main(argv: list[str] | None = None) -> int:
             language=args.language,
             translate_to=args.translate,
             vad_filter=not args.no_vad,
+            diarize=args.diarize,
+            speakers=args.speakers,
+            min_speakers=args.min_speakers,
+            max_speakers=args.max_speakers,
             index=1,
             total=1,
         )
@@ -384,6 +508,10 @@ def main(argv: list[str] | None = None) -> int:
                 language=args.language,
                 translate_to=args.translate,
                 vad_filter=not args.no_vad,
+                diarize=args.diarize,
+                speakers=args.speakers,
+                min_speakers=args.min_speakers,
+                max_speakers=args.max_speakers,
                 index=index,
                 total=total_files,
             )

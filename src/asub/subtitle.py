@@ -38,6 +38,12 @@ def _format_timestamp_vtt(seconds: float) -> str:
     return f"{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}.{millis:03d}"
 
 
+def _format_segment_text(seg: Segment) -> str:
+    if seg.speaker is None:
+        return seg.text
+    return f"[{seg.speaker}] {seg.text}"
+
+
 def generate_srt(segments: Sequence[Segment]) -> str:
     """Build an SRT-formatted string from segments."""
     lines: list[str] = []
@@ -46,7 +52,7 @@ def generate_srt(segments: Sequence[Segment]) -> str:
         end = _format_timestamp_srt(seg.end)
         lines.append(f"{index}")
         lines.append(f"{start} --> {end}")
-        lines.append(seg.text)
+        lines.append(_format_segment_text(seg))
         lines.append("")  # blank line between cues
     return "\n".join(lines)
 
@@ -59,7 +65,7 @@ def generate_vtt(segments: Sequence[Segment]) -> str:
         end = _format_timestamp_vtt(seg.end)
         lines.append(f"{index}")
         lines.append(f"{start} --> {end}")
-        lines.append(seg.text)
+        lines.append(_format_segment_text(seg))
         lines.append("")
     return "\n".join(lines)
 

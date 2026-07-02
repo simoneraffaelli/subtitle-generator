@@ -169,7 +169,7 @@ def translate_segments(
             translated_texts[i] = part
 
     result_segments = [
-        SegmentCls(start=seg.start, end=seg.end, text=translated_texts[i])
+        SegmentCls(start=seg.start, end=seg.end, text=translated_texts[i], speaker=seg.speaker)
         for i, seg in enumerate(segments)
     ]
     logger.info("Translation complete.")

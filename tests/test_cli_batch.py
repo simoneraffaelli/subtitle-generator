@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from asub import cli
+from asub.diarization import DiarizationUnavailableError
 from asub.subtitle import SubtitleFormat
 from asub.transcriber import Segment, TranscriptionResult
 
@@ -211,3 +212,142 @@ class TestDirectoryInput:
         captured = capsys.readouterr()
         assert exc_info.value.code == 2
         assert "--output must be a directory path" in captured.err
+
+    def test_batch_diarization_reuses_one_engine(self, tmp_path, monkeypatch) -> None:
+        input_dir = tmp_path / "media"
+        input_dir.mkdir()
+        (input_dir / "alpha.mp3").write_text("", encoding="utf-8")
+        (input_dir / "beta.mp3").write_text("", encoding="utf-8")
+        engine = object()
+        load_calls: list[tuple[str, str, str | None, str | None, int]] = []
+        transcribe_calls: list[tuple[str, str | None, bool, int | None]] = []
+        write_calls: list[tuple[Path, list[str]]] = []
+
+        monkeypatch.setattr(cli, "Spinner", DummySpinner)
+
+        def fake_load_diarizer(
+            model_size: str,
+            *,
+            device: str,
+            compute_type: str | None,
+            hf_token: str | None,
+            batch_size: int,
+        ):
+            load_calls.append((model_size, device, compute_type, hf_token, batch_size))
+            return engine
+
+        def fake_transcribe_with_diarization(
+            diarizer,
+            input_path,
+            *,
+            language,
+            vad_filter,
+            speakers,
+            min_speakers,
+            max_speakers,
+            on_segment,
+        ):
+            del min_speakers, max_speakers
+            assert diarizer is engine
+            path = Path(input_path)
+            transcribe_calls.append((path.name, language, vad_filter, speakers))
+            result = TranscriptionResult(
+                language="en",
+                language_probability=0.0,
+                duration=2.0,
+                segments=[Segment(start=0.0, end=1.0, text=path.stem, speaker="SPEAKER_00")],
+            )
+            if on_segment is not None:
+                on_segment(1, result.segments[0], result.duration)
+            return result
+
+        def fake_write_subtitle_file(segments, output_path, fmt=None):
+            del fmt
+            path = Path(output_path)
+            write_calls.append((path, [seg.speaker for seg in segments]))
+            return path
+
+        monkeypatch.setattr(cli, "load_diarizer", fake_load_diarizer)
+        monkeypatch.setattr(cli, "transcribe_with_diarization", fake_transcribe_with_diarization)
+        monkeypatch.setattr(cli, "write_subtitle_file", fake_write_subtitle_file)
+
+        exit_code = cli.main(
+            [str(input_dir), "--diarize", "--hf-token", "hf_test", "--speakers", "2"]
+        )
+
+        assert exit_code == 0
+        assert load_calls == [("medium", "auto", None, "hf_test", 16)]
+        assert transcribe_calls == [
+            ("alpha.mp3", None, True, 2),
+            ("beta.mp3", None, True, 2),
+        ]
+        assert [speakers for _, speakers in write_calls] == [["SPEAKER_00"], ["SPEAKER_00"]]
+
+
+class TestDiarizationValidation:
+    def test_rejects_exact_and_range_speaker_counts(self, tmp_path, capsys) -> None:
+        input_file = tmp_path / "audio.mp3"
+        input_file.write_text("", encoding="utf-8")
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main(
+                [
+                    str(input_file),
+                    "--diarize",
+                    "--hf-token",
+                    "hf_test",
+                    "--speakers",
+                    "2",
+                    "--min-speakers",
+                    "1",
+                ]
+            )
+
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 2
+        assert "--speakers cannot be combined" in captured.err
+
+    def test_rejects_min_speakers_greater_than_max_speakers(self, tmp_path, capsys) -> None:
+        input_file = tmp_path / "audio.mp3"
+        input_file.write_text("", encoding="utf-8")
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main(
+                [
+                    str(input_file),
+                    "--diarize",
+                    "--hf-token",
+                    "hf_test",
+                    "--min-speakers",
+                    "4",
+                    "--max-speakers",
+                    "2",
+                ]
+            )
+
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 2
+        assert "--min-speakers cannot be greater" in captured.err
+
+    def test_diarize_without_optional_dependency_prints_install_hint(
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ) -> None:
+        input_file = tmp_path / "audio.mp3"
+        input_file.write_text("", encoding="utf-8")
+        monkeypatch.setattr(cli, "Spinner", DummySpinner)
+
+        def fake_load_diarizer(*args, **kwargs):
+            del args, kwargs
+            raise DiarizationUnavailableError('Install them with: pip install -e ".[diarization]"')
+
+        monkeypatch.setattr(cli, "load_diarizer", fake_load_diarizer)
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main([str(input_file), "--diarize", "--hf-token", "hf_test"])
+
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 2
+        assert "pip install" in captured.err

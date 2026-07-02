@@ -1,0 +1,140 @@
+"""Tests for the optional WhisperX diarization wrapper."""
+
+from __future__ import annotations
+
+import importlib
+from typing import Any
+
+import pytest
+
+from asub import diarization
+from asub.diarization import DiarizationUnavailableError, WhisperXDiarizer
+from asub.transcriber import Segment
+
+
+class FakeWhisperX:
+    def __init__(self) -> None:
+        self.loaded_align_languages: list[str] = []
+
+    def load_audio(self, audio_path: str) -> list[int]:
+        assert audio_path
+        return [0] * 32000
+
+    def load_align_model(self, *, language_code: str, device: str):
+        assert device == "cpu"
+        self.loaded_align_languages.append(language_code)
+        return object(), {"language": language_code}
+
+    def align(
+        self,
+        segments,
+        align_model,
+        align_metadata,
+        audio,
+        device,
+        *,
+        return_char_alignments: bool,
+    ):
+        del segments, align_model, align_metadata, audio, device, return_char_alignments
+        return {
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": 2.0,
+                    "text": "Hello there. Bye now.",
+                    "words": [
+                        {"word": "Hello", "start": 0.0, "end": 0.4},
+                        {"word": "there.", "start": 0.5, "end": 0.9},
+                        {"word": "Bye", "start": 1.0, "end": 1.4},
+                        {"word": "now.", "start": 1.5, "end": 1.9},
+                    ],
+                }
+            ]
+        }
+
+    def assign_word_speakers(self, diarize_segments, result):
+        del diarize_segments
+        words = result["segments"][0]["words"]
+        words[0]["speaker"] = "SPEAKER_00"
+        words[1]["speaker"] = "SPEAKER_00"
+        words[2]["speaker"] = "SPEAKER_01"
+        words[3]["speaker"] = "SPEAKER_01"
+        return result
+
+
+class FakeModel:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def transcribe(self, audio, **kwargs):
+        self.calls.append(kwargs)
+        assert len(audio) == 32000
+        return {"language": "en", "segments": [{"start": 0.0, "end": 2.0, "text": "ignored"}]}
+
+
+class FakePipeline:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, int]] = []
+
+    def __call__(self, audio, **kwargs):
+        assert len(audio) == 32000
+        self.calls.append(kwargs)
+        return object()
+
+
+def test_diarizer_splits_segments_on_word_speaker_changes(tmp_path) -> None:
+    fake_whisperx = FakeWhisperX()
+    fake_model = FakeModel()
+    fake_pipeline = FakePipeline()
+    diarizer = WhisperXDiarizer(
+        whisperx=fake_whisperx,
+        model=fake_model,
+        diarization_pipeline=fake_pipeline,
+        device="cpu",
+        compute_type="int8",
+        batch_size=4,
+    )
+    input_file = tmp_path / "audio.mp3"
+    input_file.write_text("", encoding="utf-8")
+
+    result = diarizer.transcribe(input_file, language="en", speakers=2)
+
+    assert fake_model.calls == [{"batch_size": 4, "language": "en"}]
+    assert fake_pipeline.calls == [{"num_speakers": 2}]
+    assert fake_whisperx.loaded_align_languages == ["en"]
+    assert result.language == "en"
+    assert result.duration == 2.0
+    assert result.segments == [
+        Segment(start=0.0, end=0.9, text="Hello there.", speaker="SPEAKER_00"),
+        Segment(start=1.0, end=1.9, text="Bye now.", speaker="SPEAKER_01"),
+    ]
+
+
+def test_segment_conversion_falls_back_when_word_speakers_are_incomplete() -> None:
+    result = {
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "Hello",
+                "speaker": "SPEAKER_00",
+                "words": [{"word": "Hello", "start": 0.0, "end": 1.0}],
+            }
+        ]
+    }
+
+    assert diarization._segments_from_whisperx_result(result) == [
+        Segment(start=0.0, end=1.0, text="Hello", speaker="SPEAKER_00")
+    ]
+
+
+def test_load_diarizer_reports_missing_optional_dependency(monkeypatch) -> None:
+    def fake_import_module(name: str):
+        if name == "whisperx":
+            raise ImportError("missing")
+        return importlib.import_module(name)
+
+    monkeypatch.setattr(diarization.importlib, "import_module", fake_import_module)
+
+    with pytest.raises(DiarizationUnavailableError, match="diarization"):
+        diarization.load_diarizer(device="cpu", hf_token="hf_test")
