@@ -49,6 +49,19 @@ SUPPORTED_MEDIA_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
+_QUIET_DEPENDENCY_LOG_LEVEL = logging.CRITICAL + 1
+_DEPENDENCY_LOGGERS: tuple[str, ...] = (
+    "whisperx",
+    "pyannote",
+    "lightning",
+    "pytorch_lightning",
+    "huggingface_hub",
+    "torch",
+    "torchaudio",
+    "torchcodec",
+    "transformers",
+)
+
 
 def _positive_int(value: str) -> int:
     try:
@@ -215,6 +228,32 @@ def _configure_logging(verbosity: int) -> None:
         warnings.simplefilter("default")
     else:
         warnings.simplefilter("always")
+
+    _configure_dependency_logging(verbosity)
+
+
+def _configure_dependency_logging(verbosity: int) -> None:
+    if verbosity == 0:
+        for logger_name in _DEPENDENCY_LOGGERS:
+            dependency_logger = logging.getLogger(logger_name)
+            dependency_logger.handlers.clear()
+            dependency_logger.addHandler(logging.NullHandler())
+            dependency_logger.setLevel(_QUIET_DEPENDENCY_LOG_LEVEL)
+            dependency_logger.propagate = False
+        return
+
+    level = logging.INFO if verbosity == 1 else logging.DEBUG
+    for logger_name in _DEPENDENCY_LOGGERS:
+        dependency_logger = logging.getLogger(logger_name)
+        dependency_logger.handlers = [
+            handler
+            for handler in dependency_logger.handlers
+            if not isinstance(handler, logging.NullHandler)
+        ]
+        dependency_logger.setLevel(level)
+        dependency_logger.propagate = True
+        for handler in dependency_logger.handlers:
+            handler.setLevel(level)
 
 
 def _validate_diarization_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

@@ -78,21 +78,50 @@ class TestOutputConfiguration:
         _configure_logging(0)
 
         logging.getLogger("whisperx.asr").warning("hidden dependency log")
+        logging.getLogger("whisperx.alignment").error("hidden dependency error")
         with warnings.catch_warnings(record=True) as caught:
             warnings.warn("hidden dependency warning", UserWarning, stacklevel=1)
 
         captured = capsys.readouterr()
         assert "hidden dependency log" not in captured.err
+        assert "hidden dependency error" not in captured.err
         assert caught == []
 
+    def test_default_output_prevents_whisperx_from_installing_info_handler(self) -> None:
+        _configure_logging(0)
+
+        whisperx_logger = logging.getLogger("whisperx")
+
+        assert any(isinstance(handler, logging.NullHandler) for handler in whisperx_logger.handlers)
+        assert whisperx_logger.level > logging.CRITICAL
+        assert whisperx_logger.propagate is False
+
     def test_verbose_output_shows_dependency_warnings(self, capsys) -> None:
-        _configure_logging(1)
+        try:
+            _configure_logging(1)
 
-        logging.getLogger("whisperx.asr").warning("shown dependency log")
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.warn("shown dependency warning", UserWarning, stacklevel=1)
+            logging.getLogger("whisperx.asr").warning("shown dependency log")
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.warn("shown dependency warning", UserWarning, stacklevel=1)
 
-        captured = capsys.readouterr()
-        assert "shown dependency log" in captured.err
-        assert len(caught) == 1
-        assert str(caught[0].message) == "shown dependency warning"
+            captured = capsys.readouterr()
+            assert "shown dependency log" in captured.err
+            assert len(caught) == 1
+            assert str(caught[0].message) == "shown dependency warning"
+        finally:
+            _configure_logging(0)
+
+    def test_verbose_output_removes_quiet_dependency_handler(self) -> None:
+        try:
+            _configure_logging(0)
+            _configure_logging(1)
+
+            whisperx_logger = logging.getLogger("whisperx")
+
+            assert not any(
+                isinstance(handler, logging.NullHandler) for handler in whisperx_logger.handlers
+            )
+            assert whisperx_logger.level == logging.INFO
+            assert whisperx_logger.propagate is True
+        finally:
+            _configure_logging(0)

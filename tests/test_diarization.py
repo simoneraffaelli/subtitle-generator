@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 from typing import Any
 
 import pytest
@@ -108,6 +109,56 @@ def test_diarizer_splits_segments_on_word_speaker_changes(tmp_path) -> None:
         Segment(start=0.0, end=0.9, text="Hello there.", speaker="SPEAKER_00"),
         Segment(start=1.0, end=1.9, text="Bye now.", speaker="SPEAKER_01"),
     ]
+
+
+def test_diarizer_falls_back_to_segment_speakers_without_align_model(tmp_path, caplog) -> None:
+    class FakeWhisperXWithoutThaiAlignment(FakeWhisperX):
+        def load_align_model(self, *, language_code: str, device: str):
+            del device
+            self.loaded_align_languages.append(language_code)
+            raise ValueError(f"No default align-model for language: {language_code}")
+
+        def align(self, *args, **kwargs):
+            del args, kwargs
+            raise AssertionError("alignment should be skipped")
+
+        def assign_word_speakers(self, diarize_segments, result):
+            del diarize_segments
+            result["segments"][0]["speaker"] = "SPEAKER_00"
+            return result
+
+    class FakeThaiModel(FakeModel):
+        def transcribe(self, audio, **kwargs):
+            self.calls.append(kwargs)
+            assert len(audio) == 32000
+            return {
+                "language": "th",
+                "segments": [{"start": 0.0, "end": 2.0, "text": "sawasdee"}],
+            }
+
+    fake_whisperx = FakeWhisperXWithoutThaiAlignment()
+    fake_model = FakeThaiModel()
+    fake_pipeline = FakePipeline()
+    diarizer = WhisperXDiarizer(
+        whisperx=fake_whisperx,
+        model=fake_model,
+        diarization_pipeline=fake_pipeline,
+        device="cpu",
+        compute_type="int8",
+        batch_size=4,
+    )
+    input_file = tmp_path / "thai.mp3"
+    input_file.write_text("", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="asub.diarization"):
+        result = diarizer.transcribe(input_file)
+
+    assert fake_whisperx.loaded_align_languages == ["th"]
+    assert result.language == "th"
+    assert result.segments == [
+        Segment(start=0.0, end=2.0, text="sawasdee", speaker="SPEAKER_00")
+    ]
+    assert "segment-level speaker assignment" in caplog.text
 
 
 def test_segment_conversion_falls_back_when_word_speakers_are_incomplete() -> None:

@@ -66,15 +66,7 @@ class WhisperXDiarizer:
         detected_language = str(result.get("language") or language or "unknown")
         raw_segments = result.get("segments", [])
         if raw_segments:
-            align_model, align_metadata = self._load_align_model(detected_language)
-            result = self.whisperx.align(
-                raw_segments,
-                align_model,
-                align_metadata,
-                audio,
-                self.device,
-                return_char_alignments=False,
-            )
+            result = self._align_segments(raw_segments, result, audio, detected_language)
             result["language"] = detected_language
 
         diarize_segments = self.diarization_pipeline(
@@ -118,6 +110,34 @@ class WhisperXDiarizer:
                 device=self.device,
             )
         return self.align_models[language]
+
+    def _align_segments(
+        self,
+        raw_segments: Sequence[Any],
+        result: dict[str, Any],
+        audio: Any,
+        language: str,
+    ) -> dict[str, Any]:
+        try:
+            align_model, align_metadata = self._load_align_model(language)
+        except ValueError as exc:
+            if not _is_missing_default_alignment_model(exc):
+                raise
+            logger.warning(
+                "No default WhisperX alignment model is available for language '%s'; "
+                "using segment-level speaker assignment.",
+                language,
+            )
+            return result
+
+        return self.whisperx.align(
+            raw_segments,
+            align_model,
+            align_metadata,
+            audio,
+            self.device,
+            return_char_alignments=False,
+        )
 
 
 def load_diarizer(
@@ -212,6 +232,11 @@ def _duration_seconds(audio: Any) -> float:
         return len(audio) / _WHISPERX_AUDIO_SAMPLE_RATE
     except TypeError:
         return 0.0
+
+
+def _is_missing_default_alignment_model(exc: ValueError) -> bool:
+    message = str(exc).casefold()
+    return "no default align-model" in message or "no default alignment model" in message
 
 
 def _segments_from_whisperx_result(result: Mapping[str, Any]) -> list[Segment]:
