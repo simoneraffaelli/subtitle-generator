@@ -1,6 +1,9 @@
 """Tests for the CLI argument parser (no model loading required)."""
 
-from asub.cli import _build_parser
+import logging
+import warnings
+
+from asub.cli import _build_parser, _configure_logging
 
 
 class TestParserDefaults:
@@ -29,6 +32,11 @@ class TestParserDefaults:
         parser = _build_parser()
         args = parser.parse_args(["audio.mp3", "-vv"])
         assert args.verbose == 2
+
+    def test_single_dash_verbose_alias(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["audio.mp3", "-verbose"])
+        assert args.verbose == 1
 
     def test_output_and_format(self) -> None:
         parser = _build_parser()
@@ -63,3 +71,28 @@ class TestParserDefaults:
         assert args.min_speakers == 2
         assert args.max_speakers == 4
         assert args.diarization_batch_size == 8
+
+
+class TestOutputConfiguration:
+    def test_default_output_suppresses_dependency_warnings(self, capsys) -> None:
+        _configure_logging(0)
+
+        logging.getLogger("whisperx.asr").warning("hidden dependency log")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.warn("hidden dependency warning", UserWarning, stacklevel=1)
+
+        captured = capsys.readouterr()
+        assert "hidden dependency log" not in captured.err
+        assert caught == []
+
+    def test_verbose_output_shows_dependency_warnings(self, capsys) -> None:
+        _configure_logging(1)
+
+        logging.getLogger("whisperx.asr").warning("shown dependency log")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.warn("shown dependency warning", UserWarning, stacklevel=1)
+
+        captured = capsys.readouterr()
+        assert "shown dependency log" in captured.err
+        assert len(caught) == 1
+        assert str(caught[0].message) == "shown dependency warning"

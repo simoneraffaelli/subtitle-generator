@@ -125,6 +125,7 @@ def load_diarizer(
     *,
     device: str = "auto",
     compute_type: str | None = None,
+    language: str | None = None,
     hf_token: str | None = None,
     batch_size: int = 16,
 ) -> WhisperXDiarizer:
@@ -141,7 +142,7 @@ def load_diarizer(
         raise ValueError(msg)
 
     logger.info("Loading WhisperX model '%s' on %s (%s)...", model_size, device, compute_type)
-    model = whisperx.load_model(model_size, device, compute_type=compute_type)
+    model = whisperx.load_model(model_size, device, compute_type=compute_type, language=language)
     diarization_pipeline = diarization_pipeline_cls(token=token, device=device)
     return WhisperXDiarizer(
         whisperx=whisperx,

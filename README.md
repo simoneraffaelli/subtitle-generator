@@ -75,7 +75,7 @@ asub interview.wav --diarize --hf-token hf_your_token_here --speakers 2
 asub recordings/ -o subtitles/ -t de
 
 # Specify source language, translate to German, verbose output
-asub podcast.mp3 -l en -t de -v
+asub podcast.mp3 -l en -t de --verbose
 
 # Use CPU with int8 quantisation
 asub interview.wav --device cpu --compute-type int8
@@ -121,7 +121,9 @@ positional arguments:
 options:
   -o, --output          Output subtitle file path for a single input file, or an output directory when the input is a folder.
   -f, --format          Subtitle format: srt, vtt
-  -v, --verbose         Increase verbosity (-v INFO, -vv DEBUG)
+  -v, -verbose, --verbose
+                        Show dependency warnings/logs (-v INFO, -vv DEBUG).
+                        Default output hides warning-level dependency chatter.
   --version             Show version and exit
   --list-languages      Print supported translation languages and exit
 
@@ -162,6 +164,10 @@ plain text for broad player compatibility:
 If you know the speaker count, pass `--speakers N`. If you only know a range,
 use `--min-speakers N` and/or `--max-speakers N`. Diarization is not perfect,
 and overlapping speech is especially difficult.
+
+By default, asub hides third-party warning/log chatter from WhisperX, PyTorch,
+Hugging Face, and pyannote. Pass `--verbose` to show those messages while
+troubleshooting, or `-vv` for debug logging.
 
 ## Python API
 

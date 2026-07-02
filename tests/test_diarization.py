@@ -138,3 +138,35 @@ def test_load_diarizer_reports_missing_optional_dependency(monkeypatch) -> None:
 
     with pytest.raises(DiarizationUnavailableError, match="diarization"):
         diarization.load_diarizer(device="cpu", hf_token="hf_test")
+
+
+def test_load_diarizer_passes_language_to_whisperx(monkeypatch) -> None:
+    load_model_calls: list[dict[str, object]] = []
+
+    class FakeWhisperX:
+        def load_model(self, model_size, device, **kwargs):
+            load_model_calls.append({"model_size": model_size, "device": device, **kwargs})
+            return object()
+
+    class FakeDiarizationPipeline:
+        def __init__(self, *, token: str, device: str) -> None:
+            assert token == "hf_test"
+            assert device == "cpu"
+
+    monkeypatch.setattr(
+        diarization,
+        "_load_whisperx",
+        lambda: (FakeWhisperX(), FakeDiarizationPipeline),
+    )
+
+    diarization.load_diarizer(
+        "tiny",
+        device="cpu",
+        compute_type="int8",
+        language="zh",
+        hf_token="hf_test",
+    )
+
+    assert load_model_calls == [
+        {"model_size": "tiny", "device": "cpu", "compute_type": "int8", "language": "zh"}
+    ]

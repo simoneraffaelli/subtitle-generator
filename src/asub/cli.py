@@ -6,6 +6,7 @@ import argparse
 import logging
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -173,10 +174,11 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- General ---
     parser.add_argument(
         "-v",
+        "-verbose",
         "--verbose",
         action="count",
         default=0,
-        help="Increase verbosity (-v for INFO, -vv for DEBUG).",
+        help="Show dependency warnings/logs (-v for INFO, -vv for DEBUG).",
     )
     parser.add_argument(
         "--version",
@@ -192,7 +194,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _configure_logging(verbosity: int) -> None:
-    level = logging.WARNING
+    level = logging.ERROR
     if verbosity == 1:
         level = logging.INFO
     elif verbosity >= 2:
@@ -202,7 +204,17 @@ def _configure_logging(verbosity: int) -> None:
         level=level,
         format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt="%H:%M:%S",
+        force=True,
     )
+    for handler in logging.getLogger().handlers:
+        handler.setLevel(level)
+
+    if verbosity == 0:
+        warnings.simplefilter("ignore")
+    elif verbosity == 1:
+        warnings.simplefilter("default")
+    else:
+        warnings.simplefilter("always")
 
 
 def _validate_diarization_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -462,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:
                     args.model,
                     device=args.device,
                     compute_type=args.compute_type,
+                    language=args.language,
                     hf_token=args.hf_token,
                     batch_size=args.diarization_batch_size,
                 )

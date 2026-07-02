@@ -219,7 +219,7 @@ class TestDirectoryInput:
         (input_dir / "alpha.mp3").write_text("", encoding="utf-8")
         (input_dir / "beta.mp3").write_text("", encoding="utf-8")
         engine = object()
-        load_calls: list[tuple[str, str, str | None, str | None, int]] = []
+        load_calls: list[tuple[str, str, str | None, str | None, str | None, int]] = []
         transcribe_calls: list[tuple[str, str | None, bool, int | None]] = []
         write_calls: list[tuple[Path, list[str]]] = []
 
@@ -230,10 +230,11 @@ class TestDirectoryInput:
             *,
             device: str,
             compute_type: str | None,
+            language: str | None,
             hf_token: str | None,
             batch_size: int,
         ):
-            load_calls.append((model_size, device, compute_type, hf_token, batch_size))
+            load_calls.append((model_size, device, compute_type, language, hf_token, batch_size))
             return engine
 
         def fake_transcribe_with_diarization(
@@ -272,14 +273,23 @@ class TestDirectoryInput:
         monkeypatch.setattr(cli, "write_subtitle_file", fake_write_subtitle_file)
 
         exit_code = cli.main(
-            [str(input_dir), "--diarize", "--hf-token", "hf_test", "--speakers", "2"]
+            [
+                str(input_dir),
+                "--diarize",
+                "--hf-token",
+                "hf_test",
+                "--speakers",
+                "2",
+                "-l",
+                "zh",
+            ]
         )
 
         assert exit_code == 0
-        assert load_calls == [("medium", "auto", None, "hf_test", 16)]
+        assert load_calls == [("medium", "auto", None, "zh", "hf_test", 16)]
         assert transcribe_calls == [
-            ("alpha.mp3", None, True, 2),
-            ("beta.mp3", None, True, 2),
+            ("alpha.mp3", "zh", True, 2),
+            ("beta.mp3", "zh", True, 2),
         ]
         assert [speakers for _, speakers in write_calls] == [["SPEAKER_00"], ["SPEAKER_00"]]
 
